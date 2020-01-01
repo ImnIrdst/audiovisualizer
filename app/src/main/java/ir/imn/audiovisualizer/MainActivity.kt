@@ -1,6 +1,7 @@
 package ir.imn.audiovisualizer
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.os.Bundle
@@ -17,6 +18,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+//        startActivity(Intent(this, AudioVisualizerActivity::class.java))
 
         mediaPlayer = MediaPlayer.create(this, R.raw.test1)
             .apply { isLooping = true }

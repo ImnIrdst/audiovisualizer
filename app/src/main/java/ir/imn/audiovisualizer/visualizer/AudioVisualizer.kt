@@ -10,12 +10,14 @@ import android.media.MediaPlayer
 import android.media.audiofx.Visualizer
 import android.util.AttributeSet
 import android.view.View
-import kotlin.math.*
+import kotlin.math.log10
+import kotlin.math.max
 
 
 class AudioVisualizer(context: Context, attrs: AttributeSet) : View(context, attrs) {
 
-    private val barsCount = 16
+    private val smoothingFactor = 0.2f
+    private val barsCount = 24
     private val barsColor = Color.argb(200, 181, 111, 233)
     private val backgroundColor = Color.parseColor("#EEEEEE")
 
@@ -26,7 +28,7 @@ class AudioVisualizer(context: Context, attrs: AttributeSet) : View(context, att
         }
 
     init {
-        setBackgroundColor(backgroundColor)
+        setBackgroundColor(backgroundColor) // showing bounding box of the view
     }
 
     private var magnitudes = floatArrayOf()
@@ -43,24 +45,18 @@ class AudioVisualizer(context: Context, attrs: AttributeSet) : View(context, att
             }
         }
 
-        override fun onWaveFormDataCapture(v: Visualizer?, data: ByteArray?, sampleRate: Int) {
-//            data?.let {
-//                bytes = data
-//                visualizeData()
-//            }
-        }
-
+        override fun onWaveFormDataCapture(v: Visualizer?, data: ByteArray?, sampleRate: Int) = Unit
     }
 
     fun link(mediaPlayer: MediaPlayer) {
         if (visualizer != null) return
         visualizer = Visualizer(mediaPlayer.audioSessionId)
             .apply {
-                captureSize = Visualizer.getCaptureSizeRange()[0]
+                captureSize = Visualizer.getCaptureSizeRange()[1]
                 setDataCaptureListener(
                     dataCaptureListener,
-                    Visualizer.getMaxCaptureRate() / 2,
-                    true,
+                    Visualizer.getMaxCaptureRate() * 2 / 3,
+                    false,
                     true
                 )
                 enabled = true
@@ -69,17 +65,8 @@ class AudioVisualizer(context: Context, attrs: AttributeSet) : View(context, att
         mediaPlayer.setOnCompletionListener { visualizer?.enabled = false }
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-
-        visualizeData()
-    }
-
-    var maxAmp = 0f
-
     fun visualizeData() {
         data.clear()
-
 
         val barWidth = width / (barsCount * 2f)
         for (i in 0 until barsCount) {
@@ -93,10 +80,8 @@ class AudioVisualizer(context: Context, attrs: AttributeSet) : View(context, att
             }
             val amp = sum
                 .run { this / segmentSize } // average
-//                .run { this / 8 }
-                .run { this * height }
-                .run { max(this, barWidth) }
-
+                .run { this * height } // normalize to the height of the view
+                .run { max(this, barWidth) } // at least shows a circle
 
             val horizontalOffset = barWidth / 2 // remedy for last empty bar
 
@@ -114,38 +99,41 @@ class AudioVisualizer(context: Context, attrs: AttributeSet) : View(context, att
         invalidate()
     }
 
-    private fun printData() {
-        val temp = mutableListOf<Float>()
-        data.forEach { temp.add(it.top) }
-
-        println("imns ${temp.size} ${temp.min()} ${temp.max()} $temp ")
-    }
-
-    private var maxMagnitude = 0f
+    private val maxMagnitude = calculateMagnitude(128f, 128f)
 
     private fun convertFFTtoMagnitudes(fft: ByteArray): FloatArray {
         if (fft.isEmpty()) {
             return floatArrayOf()
         }
 
-        val n: Int = fft.size
-        val magnitudes = FloatArray(n / 2)
+        val n: Int = fft.size / FFT_NEEDED_PORTION
+        val curMagnitudes = FloatArray(n / 2)
+
+        var prevMagnitudes = magnitudes
+        if (prevMagnitudes.isEmpty()) {
+            prevMagnitudes = FloatArray(n)
+        }
 
         for (k in 0 until n / 2 - 1) {
-            val i = (k + 1) * 2
-            magnitudes[k] = hypot(fft[i].toDouble(), fft[i + 1].toDouble()).toFloat()
+            val index = k * FFT_STEP + FFT_OFFSET
+            val real: Byte = fft[index]
+            val imaginary: Byte = fft[index + 1]
+
+            val curMagnitude = calculateMagnitude(real.toFloat(), imaginary.toFloat())
+            curMagnitudes[k] = curMagnitude + (prevMagnitudes[k] - curMagnitude) * smoothingFactor
         }
-
-        val localMax = magnitudes.max() ?: 0f
-        if (localMax > maxMagnitude) {
-            maxMagnitude = localMax
-            println("imns $maxMagnitude")
-        }
-
-
-        return magnitudes.map { it / maxMagnitude }.toFloatArray()
+        return curMagnitudes.map { it / maxMagnitude }.toFloatArray()
     }
 
+    private fun calculateMagnitude(r: Float, i: Float) =
+        if (i == 0f && r == 0f) 0f else 10 * log10(r * r + i * i)
+
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+
+        visualizeData()
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -159,5 +147,11 @@ class AudioVisualizer(context: Context, attrs: AttributeSet) : View(context, att
     override fun onDetachedFromWindow() {
         visualizer?.release()
         super.onDetachedFromWindow()
+    }
+
+    companion object {
+        private const val FFT_STEP = 2
+        private const val FFT_OFFSET = 2
+        private const val FFT_NEEDED_PORTION = 3 // 1/3
     }
 }
