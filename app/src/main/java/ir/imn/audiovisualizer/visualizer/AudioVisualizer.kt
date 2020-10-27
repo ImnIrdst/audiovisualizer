@@ -68,7 +68,7 @@ class AudioVisualizer(context: Context, attrs: AttributeSet) : View(context, att
     fun visualizeData() {
         data.clear()
 
-        val barWidth = width / (barsCount * 2f)
+        val barWidth = width / (barsCount * 2f) // 2f is for the space between bars
         for (i in 0 until barsCount) {
             val segmentSize = (magnitudes.size / barsCount.toFloat())
             val segmentStart = i * segmentSize
