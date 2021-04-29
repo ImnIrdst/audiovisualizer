@@ -1,0 +1,12 @@
+version: 2
+updates:
+- package-ecosystem: gradle
+  directory: "/"
+  schedule:
+    interval: daily
+    time: "01:30"
+  open-pull-requests-limit: 10
+  ignore:
+  - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
+    versions:
+    - 1.4.32
