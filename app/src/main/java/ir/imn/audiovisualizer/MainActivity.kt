@@ -82,6 +82,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        
+        if (mediaPlayer.isPlaying) {
+            mediaPlayer.pause()
+            playControlButton.text = getString(R.string.play)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+
+        mediaPlayer.stop()
         mediaPlayer.release()
     }
 
